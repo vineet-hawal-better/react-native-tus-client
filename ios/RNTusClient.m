@@ -1,5 +1,6 @@
 #import "RNTusClient.h"
 #import "TUSKit.h"
+#import "RCTUtils.h"
 
 #define ON_SUCCESS @"onSuccess"
 #define ON_ERROR @"onError"
@@ -10,6 +11,7 @@
 @property(nonatomic, strong, readonly) NSMutableDictionary<NSString*, TUSSession*> *sessions;
 @property(nonatomic, strong, readonly) TUSUploadStore *uploadStore;
 @property(nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSString *> *endpoints;
+@property(nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSDictionary *> *progressStates;
 
 @end
 
@@ -21,15 +23,15 @@
     if(self = [super init]) {
         _sessions = [NSMutableDictionary new];
         _endpoints = [NSMutableDictionary new];
+        _progressStates = [NSMutableDictionary new];
     }
     return self;
 }
 
 - (TUSUploadStore *)uploadStore {
     if(_uploadStore == nil) {
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        NSURL *applicationSupportURL = [[fileManager URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] lastObject];
-        _uploadStore = [[TUSFileUploadStore alloc] initWithURL:[applicationSupportURL URLByAppendingPathComponent:@"__uploadStore.tmp"]];
+        NSURL *applicationSupportURL = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] lastObject];
+        _uploadStore = [[TUSFileUploadStore alloc] initWithURL:[applicationSupportURL URLByAppendingPathComponent:@"__tusUploadStore.tmp"]];
     }
     return _uploadStore;
 }
@@ -43,16 +45,70 @@
     return session;
 }
 
-- (TUSResumableUpload *)restoreUpload:(NSString *)uploadId {
-    NSString *endpoint = self.endpoints[uploadId];
+- (TUSResumableUpload *)restoreUpload:(NSString *)uploadId onEndpoint:(NSString *)endpoint withChunkSize:(NSString *)chunkSize {
     TUSSession *session = [self sessionFor:endpoint];
-    return [session restoreUpload:uploadId];
+    TUSResumableUpload *upload = [session restoreUpload:uploadId];
+
+    [self configureUpload:upload onEndpoint:endpoint withChunkSize:chunkSize];
+    return upload;
+}
+
+- (void)sendProgressEvents {
+    for(NSString* uploadId in self.progressStates) {
+        NSMutableDictionary *body = [[NSMutableDictionary alloc] initWithDictionary:self.progressStates[uploadId]];
+        [body setObject:uploadId forKey:@"uploadId"];
+        [self.progressStates removeObjectForKey:uploadId];
+        [self sendEventWithName:ON_PROGRESS body:body];
+    }
+}
+
+- (void)configureUpload:(TUSResumableUpload *)upload onEndpoint:(NSString *)endpoint withChunkSize:(NSString *)chunkSize {
+    [upload setChunkSize:[(NSNumber *)chunkSize integerValue]];
+
+    [self.endpoints setObject:endpoint forKey: upload.uploadId];
+
+    __weak TUSResumableUpload *_upload = upload;
+    __weak RNTusClient *weakSelf = self;
+    
+    upload.resultBlock = ^(NSURL * _Nonnull fileURL) {
+        if(weakSelf.progressStates[_upload.uploadId] != nil) {
+            [weakSelf.progressStates removeObjectForKey:_upload.uploadId];
+        }
+        [weakSelf sendEventWithName:ON_SUCCESS body:@{
+            @"uploadId": _upload.uploadId,
+            @"uploadUrl": fileURL.absoluteString
+        }];
+    };
+
+    upload.failureBlock = ^(NSError * _Nonnull error) {
+        if(weakSelf.progressStates[_upload.uploadId] != nil) {
+            [weakSelf.progressStates removeObjectForKey:_upload.uploadId];
+        }
+        [weakSelf sendEventWithName:ON_ERROR body:@{ @"uploadId": _upload.uploadId, @"error": RCTJSErrorFromNSError(error) }];
+    };
+
+    upload.progressBlock = ^(int64_t bytesWritten, int64_t bytesTotal) {
+        NSDictionary *progressState = @{
+            @"bytesWritten": [NSNumber numberWithLongLong: bytesWritten],
+            @"bytesTotal": [NSNumber numberWithLongLong:bytesTotal]
+        };
+        [weakSelf.progressStates setObject:progressState forKey:_upload.uploadId];
+        
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(sendProgressEvents) object:nil];
+        [self performSelector:@selector(sendProgressEvents) withObject:nil afterDelay:0.5];
+    };
 }
 
 - (dispatch_queue_t)methodQueue
 {
     return dispatch_get_main_queue();
 }
+
++ (BOOL)requiresMainQueueSetup
+{
+  return NO;  // only do this if your module initialization relies on calling UIKit!
+}
+
 RCT_EXPORT_MODULE()
 
 
@@ -67,6 +123,7 @@ RCT_EXPORT_METHOD(createUpload:(NSString *)fileUrl
                   )
 {
     NSString *endpoint = [NSString stringWithString: options[@"endpoint"]];
+    NSString *chunkSize = options[@"chunkSize"];
     NSDictionary *headers = options[@"headers"];
     NSDictionary *metadata = options[@"metadata"];
 
@@ -76,39 +133,16 @@ RCT_EXPORT_METHOD(createUpload:(NSString *)fileUrl
       ? [fileUrl substringFromIndex:7]
       : fileUrl
     ];
-    TUSResumableUpload *upload = [session createUploadFromFile:url headers:headers metadata:metadata];
+    TUSResumableUpload *upload = [session createUploadFromFile:url retry:-1 headers:headers metadata:metadata];
 
-    [self.endpoints setObject:endpoint forKey: upload.uploadId];
-
-    __weak TUSResumableUpload *_upload = upload;
-    __weak RNTusClient *weakSelf = self;
-    
-    
-    upload.resultBlock = ^(NSURL * _Nonnull fileURL) {
-        [weakSelf sendEventWithName:ON_SUCCESS body:@{
-            @"uploadId": _upload.uploadId,
-            @"uploadUrl": fileURL.absoluteString
-            }];
-    };
-
-    upload.failureBlock = ^(NSError * _Nonnull error) {
-        [weakSelf sendEventWithName:ON_ERROR body:@{ @"uploadId": _upload.uploadId, @"error": error }];
-    };
-
-    upload.progressBlock = ^(int64_t bytesWritten, int64_t bytesTotal) {
-        [weakSelf sendEventWithName:ON_PROGRESS body:@{
-            @"uploadId": _upload.uploadId,
-            @"bytesWritten": [NSNumber numberWithLongLong: bytesWritten],
-            @"bytesTotal": [NSNumber numberWithLongLong:bytesTotal]
-        }];
-    };
+    [self configureUpload:upload onEndpoint:endpoint withChunkSize:chunkSize];
 
     onCreatedCallback(@[upload.uploadId]);
 }
 
-RCT_EXPORT_METHOD(resume:(NSString *)uploadId withCallback:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(resume:(NSString *)uploadId onEndpoint:(NSString *)endpoint withChunkSize:(NSString *)chunkSize withCallback:(RCTResponseSenderBlock)callback)
 {
-    TUSResumableUpload *upload = [self restoreUpload:uploadId];
+    TUSResumableUpload *upload = [self restoreUpload:uploadId onEndpoint:endpoint withChunkSize:chunkSize];
     if(upload == nil) {
       callback(@[@NO]);
       return;
@@ -117,9 +151,9 @@ RCT_EXPORT_METHOD(resume:(NSString *)uploadId withCallback:(RCTResponseSenderBlo
     callback(@[@YES]);
 }
 
-RCT_EXPORT_METHOD(abort:(NSString *)uploadId withCallback:(RCTResponseSenderBlock)callback)
+RCT_EXPORT_METHOD(abort:(NSString *)uploadId onEndpoint:(NSString *)endpoint withChunkSize:(NSString *)chunkSize withCallback:(RCTResponseSenderBlock)callback)
 {
-    TUSResumableUpload *upload = [self restoreUpload:uploadId];
+    TUSResumableUpload *upload = [self restoreUpload:uploadId onEndpoint:endpoint withChunkSize:chunkSize];
     if(upload != nil) {
       [upload stop];
     }

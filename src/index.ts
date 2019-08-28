@@ -1,7 +1,4 @@
-import {
-  NativeModules,
-  NativeEventEmitter
-} from 'react-native';
+import { NativeModules, NativeEventEmitter } from "react-native";
 
 const { RNTusClient } = NativeModules;
 
@@ -9,13 +6,15 @@ const tusEventEmitter = new NativeEventEmitter(RNTusClient);
 
 /** Object used to setup a tus upload */
 interface Options {
+  uploadId: string;
+  file: string;
   /** URL used to create a new upload */
   endpoint: string;
-  
+
   chunkSize: number;
 
   requestPayloadSize: number;
-  
+
   /** An object with custom header values used in all requests. */
   headers?: object;
   /** An object with string values used as additional meta data
@@ -27,22 +26,22 @@ interface Options {
    * A function called once an error appears.
    * @param error and Error instance
    */
-  onError? (error: Error): void;
+  onError?(error: Error): void;
   /**
    * A function that will be called each time progress information is available.
    * @param bytesUploaded number of bytes uploaded
    * @param bytesTotal number of total bytes
    */
-  onProgress? (bytesUploaded: number, bytesTotal: number): void;
+  onProgress?(bytesUploaded: number, bytesTotal: number): void;
   /**
    * A function called when the upload finished successfully.
    */
-  onSuccess? (): void;
+  onSuccess?(): void;
 }
 
 const defaultOptions = {
-  headers: { },
-  metadata: { }
+  headers: {},
+  metadata: {}
 };
 
 /** Class representing a tus upload */
@@ -65,52 +64,47 @@ class Upload {
 
   /**
    *
-   * @param file The file absolute path.
    * @param settings The options argument used to setup your tus upload.
    */
-  constructor (file: string, options: Options) {
-    this.file = file;
+  constructor(options: Options) {
     this.aborting = false;
-    this.options = Object.assign({ }, defaultOptions, options);
+    this.options = Object.assign({}, defaultOptions, options);
+    if (this.options.uploadId) {
+      this.uploadId = this.options.uploadId;
+      delete this.options.uploadId;
+    }
   }
 
   /**
    * Start or resume the upload using the specified file.
    * If no file property is available the error handler will be called.
    */
-  public start () {
+  public start() {
     this.aborting = false;
 
-    if (!this.file) {
-      this.emitError(new Error(
-        'tus: no file or stream to upload provided'
-      ));
+    if (!this.options.file && !this.uploadId) {
+      this.emitError(new Error("tus: no file or stream to upload provided"));
       return;
     }
 
     if (!this.options.endpoint) {
-      this.emitError(new Error(
-        'tus: no endpoint provided'
-      ));
+      this.emitError(new Error("tus: no endpoint provided"));
       return;
     }
 
-    (this.uploadId
-      ? Promise.resolve()
-      : this.createUpload()
-    )
-    .then(() => this.resume())
-    .catch(e => this.emitError(e));
+    (this.uploadId ? Promise.resolve() : this.createUpload())
+      .then(() => this.resume())
+      .catch(e => this.emitError(e));
   }
 
   /**
    * Abort the currently running upload request and don't continue.
    * You can resume the upload by calling the start method again.
    */
-  public abort () {
+  public abort() {
     if (this.uploadId) {
       this.aborting = true;
-      RNTusClient.abort(this.uploadId, (err?: Error) => {
+      RNTusClient.abort(this.uploadId, this.options.endpoint, this.options.chunkSize, (err?: Error) => {
         if (err) {
           this.emitError(err);
         }
@@ -118,15 +112,27 @@ class Upload {
     }
   }
 
-  private resume () {
-    RNTusClient.resume(this.uploadId, (hasBeenResumed: boolean) => {
-      if (!hasBeenResumed) {
-        this.emitError(new Error('Error while resuming the upload'));
-      }
-    });
+  public getId() {
+    return this.uploadId;
   }
 
-  private emitError (error: Error) {
+  private resume() {
+    RNTusClient.resume(
+      this.uploadId,
+      this.options.endpoint,
+      this.options.chunkSize,
+      (hasBeenResumed: boolean) => {
+        if (!hasBeenResumed) {
+          this.emitError(new Error("Error while resuming the upload"));
+        }
+      }
+    );
+    if (!this.subscriptions.length) {
+      this.subscribe();
+    }
+  }
+
+  private emitError(error: Error) {
     if (this.options.onError) {
       this.options.onError(error);
     } else {
@@ -134,21 +140,31 @@ class Upload {
     }
   }
 
-  private createUpload (): Promise<void> {
+  private createUpload(): Promise<void> {
     return new Promise((resolve, reject) => {
-
-      const { metadata, headers, endpoint, chunkSize, requestPayloadSize } = this.options;
-      const settings = { metadata, headers, endpoint, chunkSize, requestPayloadSize }; 
+      const {
+        file,
+        metadata,
+        headers,
+        endpoint,
+        chunkSize,
+        requestPayloadSize
+      } = this.options;
+      const settings = {
+        metadata,
+        headers,
+        endpoint,
+        chunkSize,
+        requestPayloadSize
+      };
 
       RNTusClient.createUpload(
-        this.file,
+        file,
         settings,
         (uploadId: string, errorMessage?: string) => {
           this.uploadId = uploadId;
           if (uploadId == null) {
-            const error = errorMessage
-              ? new Error(errorMessage)
-              : null;
+            const error = errorMessage ? new Error(errorMessage) : null;
             reject(error);
           } else {
             this.subscribe();
@@ -159,62 +175,51 @@ class Upload {
     });
   }
 
-  private subscribe () {
-    this.subscriptions.push(tusEventEmitter.addListener(
-      'onSuccess',
-      payload => {
+  private subscribe() {
+    this.subscriptions.push(
+      tusEventEmitter.addListener("onSuccess", payload => {
         if (payload.uploadId === this.uploadId) {
           this.url = payload.uploadUrl;
           if (!this.aborting) {
             this.onSuccess();
             this.aborting = false;
-          } 
+          }
           this.unsubscribe();
         }
-      }
-    ));
-    this.subscriptions.push(tusEventEmitter.addListener(
-      'onError',
-      payload => {
+      })
+    );
+    this.subscriptions.push(
+      tusEventEmitter.addListener("onError", payload => {
         if (payload.uploadId === this.uploadId) {
           this.onError(payload.error);
         }
-      }
-    ));
-    this.subscriptions.push(tusEventEmitter.addListener(
-      'onProgress',
-      payload => {
+      })
+    );
+    this.subscriptions.push(
+      tusEventEmitter.addListener("onProgress", payload => {
         if (payload.uploadId === this.uploadId) {
-          this.onProgress(
-            payload.bytesWritten,
-            payload.bytesTotal
-          );
+          this.onProgress(payload.bytesWritten, payload.bytesTotal);
         }
-      }
-    ));
-  }
-
-  private unsubscribe () {
-    this.subscriptions.forEach(subscription =>
-      subscription.remove()
+      })
     );
   }
 
-  private onSuccess () {
+  private unsubscribe() {
+    this.subscriptions.forEach(subscription => subscription.remove());
+  }
+
+  private onSuccess() {
     this.options.onSuccess && this.options.onSuccess();
   }
 
-  private onProgress (bytesUploaded: number, bytesTotal: number) {
-    this.options.onProgress
-      && this.options.onProgress(bytesUploaded, bytesTotal);
+  private onProgress(bytesUploaded: number, bytesTotal: number) {
+    this.options.onProgress &&
+      this.options.onProgress(bytesUploaded, bytesTotal);
   }
 
-  private onError (error: Error) {
+  private onError(error: Error) {
     this.options.onError && this.options.onError(error);
   }
 }
 
-export {
-  Options,
-  Upload
-};
+export { Options, Upload };

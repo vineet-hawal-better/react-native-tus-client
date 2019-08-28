@@ -18,10 +18,21 @@
     "ios",
     "android"
   ],
-  "author": "Vincenzo Scamporlino",
+  "author": "Benjamin Wulff",
+  "contributors": [
+    {
+      "name": "Vincenzo Scamporlino",
+      "email": "vinz.scamporlino@gmail.com"
+    },
+    {
+      "name": "Benjamin Wulff",
+      "email": "benjamin.wulff@me.com"
+    }
+  ],
+  "homepage": "https://tus.io",
   "repository": {
     "type": "git",
-    "url": "git://github.com/vinzscam/react-native-tus-client.git"
+    "url": "git://github.com/Gaia-Nutrition/react-native-tus-client.git"
   },
   "license": "MIT",
   "peerDependencies": {
