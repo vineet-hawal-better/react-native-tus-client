@@ -56,10 +56,11 @@
 - (void)sendProgressEvents {
     for(NSString* uploadId in self.progressStates) {
         NSMutableDictionary *body = [[NSMutableDictionary alloc] initWithDictionary:self.progressStates[uploadId]];
-        [body setObject:uploadId forKey:@"uploadId"];
-        [self.progressStates removeObjectForKey:uploadId];
+        [body setObject:uploadId forKey:@"uploadId"];  
         [self sendEventWithName:ON_PROGRESS body:body];
     }
+
+    [self.progressStates removeAllObjects];
 }
 
 - (void)configureUpload:(TUSResumableUpload *)upload onEndpoint:(NSString *)endpoint withChunkSize:(NSString *)chunkSize {
