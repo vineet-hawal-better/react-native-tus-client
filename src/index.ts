@@ -190,14 +190,14 @@ class Upload {
     );
     this.subscriptions.push(
       tusEventEmitter.addListener("onError", payload => {
-        if (payload.uploadId === this.uploadId) {
+        if (payload.uploadId === this.uploadId && !this.aborting) {
           this.onError(payload.error);
         }
       })
     );
     this.subscriptions.push(
       tusEventEmitter.addListener("onProgress", payload => {
-        if (payload.uploadId === this.uploadId) {
+        if (payload.uploadId === this.uploadId && !this.aborting) {
           this.onProgress(payload.bytesWritten, payload.bytesTotal);
         }
       })
