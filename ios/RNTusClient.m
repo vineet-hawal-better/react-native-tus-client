@@ -12,6 +12,7 @@
 @property(nonatomic, strong, readonly) TUSUploadStore *uploadStore;
 @property(nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSString *> *endpoints;
 @property(nonatomic, strong, readonly) NSMutableDictionary<NSString *, NSDictionary *> *progressStates;
+@property(nonatomic, assign) BOOL progressNotificationScheduled;
 
 @end
 
@@ -24,6 +25,7 @@
         _sessions = [NSMutableDictionary new];
         _endpoints = [NSMutableDictionary new];
         _progressStates = [NSMutableDictionary new];
+        _progressNotificationScheduled = NO;
     }
     return self;
 }
@@ -54,6 +56,8 @@
 }
 
 - (void)sendProgressEvents {
+    self.progressNotificationScheduled = NO;
+
     for(NSString* uploadId in self.progressStates) {
         NSMutableDictionary *body = [[NSMutableDictionary alloc] initWithDictionary:self.progressStates[uploadId]];
         [body setObject:uploadId forKey:@"uploadId"];  
@@ -95,8 +99,10 @@
         };
         [weakSelf.progressStates setObject:progressState forKey:_upload.uploadId];
         
-        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(sendProgressEvents) object:nil];
-        [self performSelector:@selector(sendProgressEvents) withObject:nil afterDelay:0.5];
+        if(weakSelf.progressNotificationScheduled == NO) {
+            [weakSelf performSelector:@selector(sendProgressEvents) withObject:nil afterDelay:0.5];
+            weakSelf.progressNotificationScheduled = YES;
+        }
     };
 }
 
