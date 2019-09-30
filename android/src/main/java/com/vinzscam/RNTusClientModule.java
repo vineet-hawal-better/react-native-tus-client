@@ -2,6 +2,7 @@
 package com.vinzscam.rntusclient;
 
 import android.content.SharedPreferences;
+import android.view.animation.AnimationUtils;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -12,6 +13,7 @@ import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 
+import java.lang.Runnable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -42,12 +44,23 @@ public class RNTusClientModule extends ReactContextBaseJavaModule {
 
     private final ReactApplicationContext reactContext;
     private Map<String, TusRunnable> executorsMap;
+    private Map<String, WritableMap> progressMap;
     private ExecutorService pool;
+    private Throttle mThrottle;
+
+    final Runnable rProgress;
 
     public RNTusClientModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
         this.executorsMap = new HashMap<String, TusRunnable>();
+        this.progressMap = new HashMap<String, WritableMap>();
+        this.mThrottle = new Throttle(500);
+        this.rProgress = new Runnable() {
+            public void run() {
+                sendProgressEvents();
+            }
+        };
         pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     }
 
@@ -89,7 +102,8 @@ public class RNTusClientModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void resume(String uploadId, Callback callback) {
+    public void resume(String uploadId, String endpoint, String chunkSize, Callback callback) {
+        // endpoint and chunkSize can be ignored. Only required for iOS implementation
         TusRunnable executor = this.executorsMap.get(uploadId);
         if(executor != null) {
             pool.submit(executor);
@@ -110,6 +124,40 @@ public class RNTusClientModule extends ReactContextBaseJavaModule {
         } catch(IOException | ProtocolException e) {
             callback.invoke(e);
         }
+    }
+
+    public void sendProgressEvents() {
+        for (WritableMap params : this.progressMap.values()) {
+            this.reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                    .emit(ON_PROGRESS, params);
+        }
+        this.progressMap.clear(); 
+    }
+    
+    class Throttle {
+        private long mLastFiredTimestamp;
+        private long mInterval;
+        
+        public Throttle(long interval) {
+            mInterval = interval;
+        }
+        
+        public void attempt(Runnable runnable) {
+            if (hasSatisfiedInterval()) {
+            runnable.run();
+            mLastFiredTimestamp = getNow();
+            }
+        }
+        
+        private boolean hasSatisfiedInterval() {
+            long elapsed = getNow() - mLastFiredTimestamp;
+            return elapsed >= mInterval;
+        }
+        
+        private long getNow() {
+            return AnimationUtils.currentAnimationTimeMillis();
+        }
+    
     }
 
     class TusRunnable extends TusExecutor implements Runnable {
@@ -157,8 +205,8 @@ public class RNTusClientModule extends ReactContextBaseJavaModule {
                 params.putString("uploadId", uploadId);
                 params.putDouble("bytesWritten", bytesUploaded);
                 params.putDouble("bytesTotal", totalBytes);
-                reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                        .emit(ON_PROGRESS, params);
+                progressMap.put(uploadId, params);
+                mThrottle.attempt(rProgress);
             }while(uploader.uploadChunk() > -1 && !shouldFinish);
 
             uploader.finish();

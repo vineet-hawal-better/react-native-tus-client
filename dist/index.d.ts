@@ -42,7 +42,7 @@ declare class Upload {
     url: string;
     private options;
     private subscriptions;
-    private uploadId;
+    uploadId: string;
     private aborting;
     /**
      *
@@ -59,7 +59,6 @@ declare class Upload {
      * You can resume the upload by calling the start method again.
      */
     abort(): void;
-    getId(): string;
     private resume();
     private emitError(error);
     private createUpload();

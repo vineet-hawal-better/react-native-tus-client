@@ -58,7 +58,7 @@ class Upload {
 
   private options: Options;
   private subscriptions: any[] = [];
-  private uploadId: string;
+  public uploadId: string;
 
   private aborting: boolean;
 
@@ -104,16 +104,17 @@ class Upload {
   public abort() {
     if (this.uploadId) {
       this.aborting = true;
-      RNTusClient.abort(this.uploadId, this.options.endpoint, this.options.chunkSize, (err?: Error) => {
-        if (err) {
-          this.emitError(err);
+      RNTusClient.abort(
+        this.uploadId,
+        this.options.endpoint,
+        this.options.chunkSize,
+        (err?: Error) => {
+          if (err) {
+            this.emitError(err);
+          }
         }
-      });
+      );
     }
-  }
-
-  public getId() {
-    return this.uploadId;
   }
 
   private resume() {

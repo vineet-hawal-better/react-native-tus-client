@@ -52,9 +52,6 @@ class Upload {
             });
         }
     }
-    getId() {
-        return this.uploadId;
-    }
     resume() {
         RNTusClient.resume(this.uploadId, this.options.endpoint, this.options.chunkSize, (hasBeenResumed) => {
             if (!hasBeenResumed) {
