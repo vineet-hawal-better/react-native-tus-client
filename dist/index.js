@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter } from "react-native";
+import { NativeModules, NativeEventEmitter, Platform } from "react-native";
 const { RNTusClient } = NativeModules;
 const tusEventEmitter = new NativeEventEmitter(RNTusClient);
 const defaultOptions = {
@@ -45,19 +45,37 @@ class Upload {
     abort() {
         if (this.uploadId) {
             this.aborting = true;
-            RNTusClient.abort(this.uploadId, this.options.endpoint, this.options.chunkSize, (err) => {
-                if (err) {
-                    this.emitError(err);
-                }
-            });
+            if (Platform.OS === "ios") {
+                RNTusClient.abort(this.uploadId, this.options.endpoint, this.options.chunkSize, (err) => {
+                    if (err) {
+                        this.emitError(err);
+                    }
+                });
+            }
+            else {
+                RNTusClient.abort(this.uploadId, (err) => {
+                    if (err) {
+                        this.emitError(err);
+                    }
+                });
+            }
         }
     }
     resume() {
-        RNTusClient.resume(this.uploadId, this.options.endpoint, this.options.chunkSize, (hasBeenResumed) => {
-            if (!hasBeenResumed) {
-                this.emitError(new Error("Error while resuming the upload"));
-            }
-        });
+        if (Platform.OS === "ios") {
+            RNTusClient.resume(this.uploadId, this.options.endpoint, this.options.chunkSize, (hasBeenResumed) => {
+                if (!hasBeenResumed) {
+                    this.emitError(new Error("Error while resuming the upload"));
+                }
+            });
+        }
+        else {
+            RNTusClient.resume(this.uploadId, (hasBeenResumed) => {
+                if (!hasBeenResumed) {
+                    this.emitError(new Error("Error while resuming the upload"));
+                }
+            });
+        }
         if (!this.subscriptions.length) {
             this.subscribe();
         }

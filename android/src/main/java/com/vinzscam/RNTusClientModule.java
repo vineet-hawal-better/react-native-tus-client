@@ -102,8 +102,7 @@ public class RNTusClientModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void resume(String uploadId, String endpoint, String chunkSize, Callback callback) {
-        // endpoint and chunkSize can be ignored. Only required for iOS implementation
+    public void resume(String uploadId, Callback callback) {
         TusRunnable executor = this.executorsMap.get(uploadId);
         if(executor != null) {
             pool.submit(executor);

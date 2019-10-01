@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter } from "react-native";
+import { NativeModules, NativeEventEmitter, Platform } from "react-native";
 
 const { RNTusClient } = NativeModules;
 
@@ -104,30 +104,48 @@ class Upload {
   public abort() {
     if (this.uploadId) {
       this.aborting = true;
-      RNTusClient.abort(
-        this.uploadId,
-        this.options.endpoint,
-        this.options.chunkSize,
-        (err?: Error) => {
+
+      if (Platform.OS === "ios") {
+        RNTusClient.abort(
+          this.uploadId,
+          this.options.endpoint,
+          this.options.chunkSize,
+          (err?: Error) => {
+            if (err) {
+              this.emitError(err);
+            }
+          }
+        );
+      } else {
+        RNTusClient.abort(this.uploadId, (err?: Error) => {
           if (err) {
             this.emitError(err);
           }
-        }
-      );
+        });
+      }
     }
   }
 
   private resume() {
-    RNTusClient.resume(
-      this.uploadId,
-      this.options.endpoint,
-      this.options.chunkSize,
-      (hasBeenResumed: boolean) => {
+    if (Platform.OS === "ios") {
+      RNTusClient.resume(
+        this.uploadId,
+        this.options.endpoint,
+        this.options.chunkSize,
+        (hasBeenResumed: boolean) => {
+          if (!hasBeenResumed) {
+            this.emitError(new Error("Error while resuming the upload"));
+          }
+        }
+      );
+    } else {
+      RNTusClient.resume(this.uploadId, (hasBeenResumed: boolean) => {
         if (!hasBeenResumed) {
           this.emitError(new Error("Error while resuming the upload"));
         }
-      }
-    );
+      });
+    }
+
     if (!this.subscriptions.length) {
       this.subscribe();
     }
