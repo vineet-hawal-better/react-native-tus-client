@@ -6,7 +6,7 @@ const tusEventEmitter = new NativeEventEmitter(RNTusClient);
 
 /** Object used to setup a tus upload */
 interface Options {
-  uploadId: string;
+  uploadId?: string;
   file: string;
   /** URL used to create a new upload */
   endpoint: string;
