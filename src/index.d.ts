@@ -29,6 +29,7 @@ interface Options {
    */
   onSuccess?(): void;
 }
+
 /** Class representing a tus upload */
 declare class Upload {
   /**

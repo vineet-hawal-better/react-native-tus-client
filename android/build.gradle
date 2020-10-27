@@ -15,11 +15,11 @@ buildscript {
 apply plugin: 'com.android.library'
 
 android {
-	compileSdkVersion safeExtGet('compileSdkVersion', 23)
+    compileSdkVersion safeExtGet('compileSdkVersion', 23)
     buildToolsVersion safeExtGet('buildToolsVersion', '23.0.1')
 
     defaultConfig {
-		minSdkVersion safeExtGet('minSdkVersion', 16)
+        minSdkVersion safeExtGet('minSdkVersion', 16)
         targetSdkVersion safeExtGet('targetSdkVersion', 22)
         versionCode 1
         versionName "1.0"
@@ -36,5 +36,6 @@ repositories {
 dependencies {
     compile 'com.facebook.react:react-native:+'
     compile group: 'org.jetbrains', name: 'annotations', version: '13.0'
+    implementation 'io.tus.java.client:tus-java-client:0.4.2'
+    implementation 'io.tus.android.client:tus-android-client:0.1.9'
 }
-  

@@ -30,6 +30,10 @@
     return self;
 }
 
++ (BOOL)requiresMainQueueSetup {
+  return NO;
+}
+
 - (TUSUploadStore *)uploadStore {
     if(_uploadStore == nil) {
         NSURL *applicationSupportURL = [[[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask] lastObject];

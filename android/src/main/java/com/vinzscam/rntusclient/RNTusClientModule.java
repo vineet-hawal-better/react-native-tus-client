@@ -83,7 +83,26 @@ public class RNTusClientModule extends ReactContextBaseJavaModule {
         } catch (FileNotFoundException | MalformedURLException e) {
             callback.invoke(false);
         }
+    }
 
+    @ReactMethod
+    protected void makeAttempt() throws ProtocolException, IOException {
+      uploader = client.resumeOrCreateUpload(upload);
+      uploader.setChunkSize(1024);
+      uploader.setRequestPayloadSize(10 * 1024 * 1024);
+
+      do {
+        long totalBytes = upload.getSize();
+        long bytesUploaded = uploader.getOffset();
+        WritableMap params = Arguments.createMap();
+        params.putString("uploadId", uploadId);
+        params.putDouble("bytesWritten", bytesUploaded);
+        params.putDouble("bytesTotal", totalBytes);
+        reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit(ON_PROGRESS, params);
+      }while(uploader.uploadChunk() > -1 && !shouldFinish);
+
+      uploader.finish();
     }
 
     @ReactMethod

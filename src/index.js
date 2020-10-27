@@ -1,6 +1,7 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 const { RNTusClient } = NativeModules;
 const tusEventEmitter = new NativeEventEmitter(RNTusClient);
+
 const defaultOptions = {
   headers: {},
   metadata: {},
@@ -187,5 +188,6 @@ class Upload {
     this.options.onError && this.options.onError(error);
   }
 }
+
 export { Upload };
 // # sourceMappingURL=index.js.map
